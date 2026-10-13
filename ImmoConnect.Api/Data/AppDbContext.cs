@@ -1,9 +1,10 @@
 ﻿using ImmoConnect.Api.Models.Domain;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace ImmoConnect.Api.Data
 {
-    public class AppDbContext : DbContext
+    public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
@@ -15,37 +16,40 @@ namespace ImmoConnect.Api.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            base.OnModelCreating(modelBuilder);
+            base.OnModelCreating(modelBuilder);   // obligatoire, en premier
 
-            modelBuilder.Entity<Bien>(e =>
+            // BIEN
+            modelBuilder.Entity<Bien>(entity =>
             {
-                e.Property(b => b.Titre).IsRequired().HasMaxLength(150);
-                e.Property(b => b.Ville).IsRequired().HasMaxLength(80);
-                e.Property(b => b.Prix).HasPrecision(18, 2);
-                e.Property(b => b.Type).HasConversion<string>().HasMaxLength(20);
-                e.Property(b => b.Statut).HasConversion<string>().HasMaxLength(20);
+                entity.Property(b => b.Titre).IsRequired().HasMaxLength(150);
+                entity.Property(b => b.Ville).IsRequired().HasMaxLength(80);
+                entity.Property(b => b.Prix).HasPrecision(18, 2);
+                entity.Property(b => b.Type).HasConversion<string>().HasMaxLength(20);
+                entity.Property(b => b.Statut).HasConversion<string>().HasMaxLength(20);
             });
 
-            modelBuilder.Entity<Client>(e =>
+            // CLIENT
+            modelBuilder.Entity<Client>(entity =>
             {
-                e.Property(c => c.Nom).IsRequired().HasMaxLength(100);
-                e.Property(c => c.Email).IsRequired().HasMaxLength(150);
-                e.HasIndex(c => c.Email).IsUnique();
+                entity.Property(c => c.Nom).IsRequired().HasMaxLength(100);
+                entity.Property(c => c.Email).IsRequired().HasMaxLength(150);
+                entity.HasIndex(c => c.Email).IsUnique();
             });
 
-            modelBuilder.Entity<Visite>(e =>
+            // VISITE
+            modelBuilder.Entity<Visite>(entity =>
             {
-                e.Property(v => v.Statut).HasConversion<string>().HasMaxLength(20);
+                entity.Property(v => v.Statut).HasConversion<string>();
 
-                e.HasOne(v => v.Bien)
-                 .WithMany(b => b.Visites)
-                 .HasForeignKey(v => v.BienId)
-                 .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(v => v.Bien)
+                      .WithMany(b => b.Visites)
+                      .HasForeignKey(v => v.BienId)
+                      .OnDelete(DeleteBehavior.Restrict);
 
-                e.HasOne(v => v.Client)
-                 .WithMany(c => c.Visites)
-                 .HasForeignKey(v => v.ClientId)
-                 .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(v => v.Client)
+                      .WithMany(c => c.Visites)
+                      .HasForeignKey(v => v.ClientId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

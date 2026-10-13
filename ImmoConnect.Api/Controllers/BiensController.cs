@@ -2,10 +2,12 @@
 using ImmoConnect.Api.Models.Domain;
 using ImmoConnect.Api.Models.DTO;
 using ImmoConnect.Api.Repository;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ImmoConnect.Api.Controllers
 {
+    [Authorize]   // toutes les actions exigent un token valide (Admin ou Agent)
     [Route("api/[controller]")]
     [ApiController]
     public class BiensController : ControllerBase
@@ -19,6 +21,8 @@ namespace ImmoConnect.Api.Controllers
             this.mapper = mapper;
         }
 
+        // GET api/biens?ville=Rabat&type=Appartement&prixMax=2000000
+        // Les 3 filtres sont facultatifs (nullable) : absent = pas de filtre
         [HttpGet]
         public async Task<IActionResult> GetAll(
             [FromQuery] string? ville,
@@ -26,57 +30,63 @@ namespace ImmoConnect.Api.Controllers
             [FromQuery] decimal? prixMax)
         {
             var biens = await bienRepository.GetAllAsync(ville, type, prixMax);
+
+            // Liste d'entités -> liste de DTO (VisitesCount calculé par AutoMapper)
             return Ok(mapper.Map<List<BienDto>>(biens));
         }
 
-        [HttpGet("{id:int}")]
-        public async Task<IActionResult> GetById(int id)
+        // GET api/biens/5
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetById([FromRoute] int id)
         {
             var bien = await bienRepository.GetByIdAsync(id);
-            if (bien == null) return NotFound();
+
+            if (bien == null)
+                return NotFound();   // 404
+
             return Ok(mapper.Map<BienDto>(bien));
         }
 
-        // À toi : Create, Update, Delete
-
+        // POST api/biens
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateBienDto createBienDto)
+        public async Task<IActionResult> Create([FromBody] CreateBienDto dto)
         {
-            var bienDomain = mapper.Map<Bien>(createBienDto);
+            // DTO -> entité, puis enregistrement en base
+            var bien = mapper.Map<Bien>(dto);
+            bien = await bienRepository.CreateAsync(bien);
 
-            bienDomain = await bienRepository.CreateAsync(bienDomain);
+            var result = mapper.Map<BienDto>(bien);
 
-            var bienDTO = mapper.Map<BienDto>(bienDomain);
-
-            return CreatedAtAction(nameof(GetById), new { id = bienDTO.Id }, bienDTO);
+            // 201 Created + en-tête Location pointant vers GetById
+            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
 
-        [HttpPut]
-        [Route("{id:int}")]
-        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateBienDto updateBienDto)
+        // PUT api/biens/5
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateBienDto dto)
         {
-            var bienDomain = mapper.Map<Bien>(updateBienDto);
+            var bien = mapper.Map<Bien>(dto);
+            var updated = await bienRepository.UpdateAsync(id, bien);
 
-            bienDomain = await bienRepository.UpdateAsync(id, bienDomain);
-            if(bienDomain == null)
-            {
-                return NotFound();
-            }
+            if (updated == null)
+                return NotFound();   // le bien n'existe pas
 
-            return Ok(mapper.Map<BienDto>(bienDomain));
+            return Ok(mapper.Map<BienDto>(updated));
         }
 
-        [HttpDelete]
-        [Route("{id:int}")]
+        // DELETE api/biens/5 : réservé à l'Admin
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("{id}")]
         public async Task<IActionResult> Delete([FromRoute] int id)
         {
             var result = await bienRepository.DeleteAsync(id);
 
+            // switch expression : chaque résultat du repository -> un code HTTP
             return result switch
             {
                 DeleteBienResult.NotFound => NotFound(),
-                DeleteBienResult.HasVisites => BadRequest("Impossible de supprimer ce bien : il a des visites."),
-                _ => NoContent()
+                DeleteBienResult.HasVisites => Conflict("Impossible de supprimer un bien qui a des visites"),
+                _ => NoContent()   // Deleted -> 204
             };
         }
     }
